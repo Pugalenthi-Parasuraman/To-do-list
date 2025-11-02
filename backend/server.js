@@ -10,7 +10,7 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "https://to-do-list-8zkp.vercel.app/", // Your Vercel frontend
+      "https://to-do-list-8zkp.vercel.app",
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:5000",
@@ -64,6 +64,31 @@ const todoSchema = new mongoose.Schema({
 const Todo = mongoose.model("Todo", todoSchema);
 
 // ========== API ROUTES ==========
+
+// Root endpoint
+app.get("/", (req, res) => {
+  res.json({
+    message: "🚀 Schedule Tracker API",
+    version: "1.0.0",
+    status: "Running",
+    frontend: "https://to-do-list-8zkp.vercel.app",
+    endpoints: {
+      health: "/api/health",
+      todos: "/api/todos",
+      stats: "/api/stats",
+    },
+  });
+});
+
+// Health check
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "API is running perfectly!",
+    timestamp: new Date().toISOString(),
+    mongodb: "Connected ✅",
+    cors: "Enabled ✅",
+  });
+});
 
 // 1. GET all todos
 app.get("/api/todos", async (req, res) => {
@@ -149,17 +174,7 @@ app.delete("/api/todos/:id", async (req, res) => {
   }
 });
 
-// 6. Health check
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "API is running perfectly!",
-    timestamp: new Date().toISOString(),
-    mongodb: "Connected ✅",
-    cors: "Enabled ✅",
-  });
-});
-
-// 7. GET todos by category
+// 6. GET todos by category
 app.get("/api/todos/category/:category", async (req, res) => {
   try {
     const todos = await Todo.find({ category: req.params.category });
@@ -169,7 +184,7 @@ app.get("/api/todos/category/:category", async (req, res) => {
   }
 });
 
-// 8. GET completed todos count
+// 7. GET completion stats
 app.get("/api/stats/completion", async (req, res) => {
   try {
     const total = await Todo.countDocuments();
@@ -187,13 +202,13 @@ app.get("/api/stats/completion", async (req, res) => {
   }
 });
 
-// 9. DELETE all completed todos
+// 8. DELETE all completed todos
 app.delete("/api/todos/completed/all", async (req, res) => {
   try {
     const result = await Todo.deleteMany({ completed: true });
-    res.json({ 
-      message: "All completed todos deleted", 
-      deletedCount: result.deletedCount 
+    res.json({
+      message: "All completed todos deleted",
+      deletedCount: result.deletedCount,
     });
     console.log("✅ All completed todos deleted");
   } catch (error) {
@@ -201,20 +216,21 @@ app.delete("/api/todos/completed/all", async (req, res) => {
   }
 });
 
-// 10. GET all stats
+// 9. GET all stats
 app.get("/api/stats", async (req, res) => {
   try {
     const total = await Todo.countDocuments();
     const completed = await Todo.countDocuments({ completed: true });
     const byCategory = await Todo.aggregate([
-      { $group: { _id: "$category", count: { $sum: 1 } } }
+      { $group: { _id: "$category", count: { $sum: 1 } } },
     ]);
 
     res.json({
       total,
       completed,
       pending: total - completed,
-      completionPercentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+      completionPercentage:
+        total > 0 ? Math.round((completed / total) * 100) : 0,
       byCategory,
     });
   } catch (error) {
@@ -222,33 +238,17 @@ app.get("/api/stats", async (req, res) => {
   }
 });
 
-// 11. OPTIONS for CORS preflight
-app.options("*", cors());
+// ========== Error Handling ==========
 
-// 12. Root endpoint
-app.get("/", (req, res) => {
-  res.json({
-    message: "🚀 Schedule Tracker API",
-    version: "1.0.0",
-    status: "Running",
-    frontend: "https://to-do-list-22jc.vercel.app",
-    endpoints: {
-      health: "/api/health",
-      todos: "/api/todos",
-      stats: "/api/stats",
-    }
-  });
+// 404 handler - MUST be before error handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Endpoint not found" });
 });
 
-// ========== Error Handling ==========
+// Error handling middleware - MUST be last
 app.use((err, req, res, next) => {
   console.error("Error:", err.message);
   res.status(500).json({ error: err.message });
-});
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: "Endpoint not found" });
 });
 
 // ========== Start Server ==========
@@ -258,7 +258,7 @@ app.listen(PORT, () => {
   ╔════════════════════════════════════════════════════════╗
   ║  🚀 Schedule Tracker API Server                        ║
   ║  📍 Running on port: ${PORT}                           ║
-  ║  🌐 Frontend: https://to-do-list-8zkp.vercel.app/      ║
+  ║  🌐 Frontend: https://to-do-list-8zkp.vercel.app      ║
   ║  ✅ API Status: ONLINE                                 ║
   ║  💾 Database: MongoDB Connected                        ║
   ║  🔗 CORS: Enabled for Vercel                           ║
@@ -274,4 +274,5 @@ app.listen(PORT, () => {
   console.log("  📊 GET    /api/stats                     - Get Statistics");
   console.log("  🏷️  GET    /api/todos/category/:category  - Get by Category");
   console.log("  📈 GET    /api/stats/completion          - Completion Stats");
-  console.log("\n")});
+  console.log("\n");
+});
