@@ -5,11 +5,28 @@ require("dotenv").config();
 
 const app = express();
 
+// ========== CORS Configuration ==========
+// Allow Vercel frontend and localhost
+app.use(
+  cors({
+    origin: [
+      "https://to-do-list-8zkp.vercel.app/", // Your Vercel frontend
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:5000",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:5173",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
 // Middleware
 app.use(express.json());
-app.use(cors());
 
-// MongoDB Connection
+// ========== MongoDB Connection ==========
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI, {
@@ -25,7 +42,7 @@ const connectDB = async () => {
 
 connectDB();
 
-// Todo Schema
+// ========== Todo Schema ==========
 const todoSchema = new mongoose.Schema({
   activity: {
     type: String,
@@ -137,6 +154,8 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "API is running perfectly!",
     timestamp: new Date().toISOString(),
+    mongodb: "Connected ✅",
+    cors: "Enabled ✅",
   });
 });
 
@@ -168,20 +187,91 @@ app.get("/api/stats/completion", async (req, res) => {
   }
 });
 
-// Start Server
+// 9. DELETE all completed todos
+app.delete("/api/todos/completed/all", async (req, res) => {
+  try {
+    const result = await Todo.deleteMany({ completed: true });
+    res.json({ 
+      message: "All completed todos deleted", 
+      deletedCount: result.deletedCount 
+    });
+    console.log("✅ All completed todos deleted");
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 10. GET all stats
+app.get("/api/stats", async (req, res) => {
+  try {
+    const total = await Todo.countDocuments();
+    const completed = await Todo.countDocuments({ completed: true });
+    const byCategory = await Todo.aggregate([
+      { $group: { _id: "$category", count: { $sum: 1 } } }
+    ]);
+
+    res.json({
+      total,
+      completed,
+      pending: total - completed,
+      completionPercentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+      byCategory,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 11. OPTIONS for CORS preflight
+app.options("*", cors());
+
+// 12. Root endpoint
+app.get("/", (req, res) => {
+  res.json({
+    message: "🚀 Schedule Tracker API",
+    version: "1.0.0",
+    status: "Running",
+    frontend: "https://to-do-list-22jc.vercel.app",
+    endpoints: {
+      health: "/api/health",
+      todos: "/api/todos",
+      stats: "/api/stats",
+    }
+  });
+});
+
+// ========== Error Handling ==========
+app.use((err, req, res, next) => {
+  console.error("Error:", err.message);
+  res.status(500).json({ error: err.message });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: "Endpoint not found" });
+});
+
+// ========== Start Server ==========
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`
-  ╔═════════════════════════════════════╗
-  ║  🚀 Server is running on port ${PORT}  ║
-  ║  📍 http://localhost:${PORT}         ║
-  ║  ✅ API Status: ONLINE              ║
-  ╚═════════════════════════════════════╝
+  ╔════════════════════════════════════════════════════════╗
+  ║  🚀 Schedule Tracker API Server                        ║
+  ║  📍 Running on port: ${PORT}                           ║
+  ║  🌐 Frontend: https://to-do-list-8zkp.vercel.app/      ║
+  ║  ✅ API Status: ONLINE                                 ║
+  ║  💾 Database: MongoDB Connected                        ║
+  ║  🔗 CORS: Enabled for Vercel                           ║
+  ╚════════════════════════════════════════════════════════╝
   `);
-  console.log("Available endpoints:");
-  console.log("  GET  http://localhost:5000/api/todos");
-  console.log("  POST http://localhost:5000/api/todos");
-  console.log("  PUT  http://localhost:5000/api/todos/:id");
-  console.log("  DELETE http://localhost:5000/api/todos/:id");
-  console.log("  GET  http://localhost:5000/api/health");
-});
+  console.log("\n📚 Available Endpoints:");
+  console.log("  🏠 GET    /                              - API Info");
+  console.log("  💚 GET    /api/health                    - Health Check");
+  console.log("  📋 GET    /api/todos                     - Get All Todos");
+  console.log("  ➕ POST   /api/todos                     - Create Todo");
+  console.log("  ✏️  PUT    /api/todos/:id                 - Update Todo");
+  console.log("  🗑️  DELETE /api/todos/:id                 - Delete Todo");
+  console.log("  📊 GET    /api/stats                     - Get Statistics");
+  console.log("  🏷️  GET    /api/todos/category/:category  - Get by Category");
+  console.log("  📈 GET    /api/stats/completion          - Completion Stats");
+  console.log("\n")});
