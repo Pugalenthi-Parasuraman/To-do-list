@@ -6,25 +6,24 @@ require("dotenv").config();
 const app = express();
 
 // ========== CORS Configuration ==========
-// Allow Vercel frontend and localhost
-app.use(
-  cors({
-    origin: [
-      "https://to-do-list-8zkp.vercel.app",
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "http://localhost:5000",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:5173",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+// Allow ALL origins (fix for Vercel deployment issues)
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow all origins
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Handle preflight requests
 
 // Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // ========== MongoDB Connection ==========
 const connectDB = async () => {
@@ -71,7 +70,6 @@ app.get("/", (req, res) => {
     message: "🚀 Schedule Tracker API",
     version: "1.0.0",
     status: "Running",
-    frontend: "https://to-do-list-8zkp.vercel.app",
     endpoints: {
       health: "/api/health",
       todos: "/api/todos",
@@ -83,10 +81,10 @@ app.get("/", (req, res) => {
 // Health check
 app.get("/api/health", (req, res) => {
   res.json({
-    status: "API is running perfectly!",
+    status: "✅ API is running perfectly!",
     timestamp: new Date().toISOString(),
     mongodb: "Connected ✅",
-    cors: "Enabled ✅",
+    cors: "Enabled for all origins ✅",
   });
 });
 
@@ -94,9 +92,10 @@ app.get("/api/health", (req, res) => {
 app.get("/api/todos", async (req, res) => {
   try {
     const todos = await Todo.find().sort({ createdAt: -1 });
+    console.log(`✅ Fetched ${todos.length} todos`);
     res.json(todos);
-    console.log("✅ Fetched all todos");
   } catch (error) {
+    console.error("❌ Error fetching todos:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -110,6 +109,7 @@ app.get("/api/todos/:id", async (req, res) => {
     }
     res.json(todo);
   } catch (error) {
+    console.error("❌ Error fetching todo:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -124,7 +124,7 @@ app.post("/api/todos", async (req, res) => {
     }
 
     const todo = new Todo({
-      activity,
+      activity: activity.trim(),
       time: time || new Date().toLocaleTimeString(),
       category: category || "Custom",
       day: day || "all",
@@ -132,9 +132,10 @@ app.post("/api/todos", async (req, res) => {
     });
 
     await todo.save();
-    res.json(todo);
-    console.log("✅ New todo created:", activity);
+    console.log(`✅ New todo created: ${activity}`);
+    res.status(201).json(todo);
   } catch (error) {
+    console.error("❌ Error creating todo:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -142,7 +143,17 @@ app.post("/api/todos", async (req, res) => {
 // 4. PUT update todo
 app.put("/api/todos/:id", async (req, res) => {
   try {
-    const todo = await Todo.findByIdAndUpdate(req.params.id, req.body, {
+    const { activity, time, category, day, completed } = req.body;
+
+    // Build update object only with provided fields
+    const updateData = {};
+    if (activity !== undefined) updateData.activity = activity.trim();
+    if (time !== undefined) updateData.time = time;
+    if (category !== undefined) updateData.category = category;
+    if (day !== undefined) updateData.day = day;
+    if (completed !== undefined) updateData.completed = completed;
+
+    const todo = await Todo.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
     });
@@ -151,9 +162,10 @@ app.put("/api/todos/:id", async (req, res) => {
       return res.status(404).json({ error: "Todo not found" });
     }
 
+    console.log(`✅ Todo updated: ${todo.activity}`);
     res.json(todo);
-    console.log("✅ Todo updated:", req.body.activity);
   } catch (error) {
+    console.error("❌ Error updating todo:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -167,9 +179,10 @@ app.delete("/api/todos/:id", async (req, res) => {
       return res.status(404).json({ error: "Todo not found" });
     }
 
+    console.log(`✅ Todo deleted: ${todo.activity}`);
     res.json({ message: "Todo deleted successfully", todo });
-    console.log("✅ Todo deleted");
   } catch (error) {
+    console.error("❌ Error deleting todo:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -180,6 +193,7 @@ app.get("/api/todos/category/:category", async (req, res) => {
     const todos = await Todo.find({ category: req.params.category });
     res.json(todos);
   } catch (error) {
+    console.error("❌ Error fetching by category:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -198,6 +212,7 @@ app.get("/api/stats/completion", async (req, res) => {
       completionPercentage: percentage,
     });
   } catch (error) {
+    console.error("❌ Error fetching completion stats:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -206,12 +221,13 @@ app.get("/api/stats/completion", async (req, res) => {
 app.delete("/api/todos/completed/all", async (req, res) => {
   try {
     const result = await Todo.deleteMany({ completed: true });
+    console.log(`✅ Deleted ${result.deletedCount} completed todos`);
     res.json({
       message: "All completed todos deleted",
       deletedCount: result.deletedCount,
     });
-    console.log("✅ All completed todos deleted");
   } catch (error) {
+    console.error("❌ Error deleting completed todos:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -234,11 +250,18 @@ app.get("/api/stats", async (req, res) => {
       byCategory,
     });
   } catch (error) {
+    console.error("❌ Error fetching stats:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // ========== Error Handling ==========
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.path} - Origin: ${req.get("origin")}`);
+  next();
+});
 
 // 404 handler - MUST be before error handler
 app.use((req, res) => {
@@ -247,7 +270,7 @@ app.use((req, res) => {
 
 // Error handling middleware - MUST be last
 app.use((err, req, res, next) => {
-  console.error("Error:", err.message);
+  console.error("❌ Server Error:", err.message);
   res.status(500).json({ error: err.message });
 });
 
@@ -258,10 +281,10 @@ app.listen(PORT, () => {
   ╔════════════════════════════════════════════════════════╗
   ║  🚀 Schedule Tracker API Server                        ║
   ║  📍 Running on port: ${PORT}                           ║
-  ║  🌐 Frontend: https://to-do-list-8zkp.vercel.app      ║
   ║  ✅ API Status: ONLINE                                 ║
   ║  💾 Database: MongoDB Connected                        ║
-  ║  🔗 CORS: Enabled for Vercel                           ║
+  ║  🔗 CORS: Enabled for ALL origins                      ║
+  ║  🔐 Ready for Vercel deployment                        ║
   ╚════════════════════════════════════════════════════════╝
   `);
   console.log("\n📚 Available Endpoints:");
